@@ -67,11 +67,16 @@ $ (cd deps/libdwarf && git checkout 988618dc8be8)
 $ curl https://fossies.org/linux/misc/old/libelf-0.8.13.tar.gz | tar -C deps -xz
 ```
 
-Then, NMAKE can be invoked through x86 or x64 Native Tools Command Prompt for
-VS (depending on whether you need 32-bit or 64-bit plugin) as follows:
+Because IDA is now 100% x64 binaries as of IDA 7, you must invoke NMAKE through the x64 Native Tools Command Prompt for
+VS as follows for "32-bit" IDA:
 
 ```
-dwarfexport> nmake /f Makefile.MSVC IDA_PATH="C:\Program Files\IDA 7.2" IDASDK_PATH="C:\Program Files\IDA 7.2\sdk"
+dwarfexport> nmake /f Makefile.MSVC IDA_PATH="C:\Program Files\IDA 7.2" IDASDK_PATH="C:\Program Files\IDA 7.2\sdk PLATFORM="x86"
+```
+
+and for 64-bit:
+```
+dwarfexport> nmake /f Makefile.MSVC IDA_PATH="C:\Program Files\IDA 7.2" IDASDK_PATH="C:\Program Files\IDA 7.2\sdk PLATFORM="x86"
 ```
 
 32-bit version will be placed into `bin\dwarfexport.dll`, 64-bit version will
