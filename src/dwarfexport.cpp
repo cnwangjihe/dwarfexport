@@ -804,6 +804,7 @@ bool idaapi run(size_t) {
                          "Export Options\n <Use Decompiler:C>\n"
                          "<Only Decompile Named Functions:C>\n"
                          "<Attach Debug Info:C>\n"
+                         "<Permissive ELF Layout:C>\n"
                          "<Verbose:C>>\n";
 
     if (ask_form(dialog, options.filepath, &options.export_options) ==
@@ -836,6 +837,8 @@ bool idaapi run(size_t) {
 
       dwarfexport_log("Writing out DWARF file to disk");
       write_dwarf_file(info, options);
+
+      dwarfexport_log("All done");
     }
   } catch (const std::exception &e) {
     std::string msg = "A dwarfexport error occurred: " + std::string(e.what());

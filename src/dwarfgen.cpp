@@ -279,7 +279,8 @@ static void log_elf(Elf *elf) {
 
 static void generate_copy_with_dbg_info(std::shared_ptr<DwarfGenInfo> info,
                                         const std::string &src,
-                                        const std::string &dst) {
+                                        const std::string &dst,
+                                        bool permissive) {
   int fd_in = -1, fd_out = -1;
   Elf *elf_in = 0, *elf_out = 0;
 
@@ -322,6 +323,8 @@ static void generate_copy_with_dbg_info(std::shared_ptr<DwarfGenInfo> info,
    * so we cannot use the automatic layout. Suppress it and use the exact
    * layout from the input. */
   if (elf_flagelf(elf_out, ELF_C_SET, ELF_F_LAYOUT | ELF_F_LAYOUT_OVERLAP) == 0)
+    dwarfexport_error("elf_flagelf failed: ", elf_errmsg(-1));
+  if (permissive && elf_flagelf(elf_out, ELF_C_SET, ELF_F_PERMISSIVE) == 0)
     dwarfexport_error("elf_flagelf failed: ", elf_errmsg(-1));
 
   if (gelf_getehdr(elf_out, &ehdr_out) != &ehdr_out)
@@ -480,7 +483,7 @@ void generate_detached_dbg_info(std::shared_ptr<DwarfGenInfo> info,
 void write_dwarf_file(std::shared_ptr<DwarfGenInfo> info,
                       const Options &options) {
   if (options.attach_debug_info()) {
-    generate_copy_with_dbg_info(info, options.filename, options.dbg_filename());
+    generate_copy_with_dbg_info(info, options.filename, options.dbg_filename(), options.permissive_elf_layout());
   } else {
     generate_detached_dbg_info(info, options.filepath);
   }
