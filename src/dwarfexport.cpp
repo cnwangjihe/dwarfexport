@@ -740,9 +740,10 @@ void add_debug_info(std::shared_ptr<DwarfGenInfo> info,
     dwarfexport_log("Adding functions from: ", lsegname);
 
     func_t *f = get_func(seg->start_ea);
-    if (f == nullptr) {
+    if (f == nullptr || f->start_ea != seg->start_ea) {
       // In some cases, the start of the section may not actually be a function,
-      // so get the first available function.
+      // or it may be a function chunk (in which case `get_func` returns the
+      // parent function start), so get the first available actual function.
       f = get_next_func(seg->start_ea);
 
       if (f == nullptr) {
