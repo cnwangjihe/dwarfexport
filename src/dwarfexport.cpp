@@ -840,9 +840,12 @@ bool idaapi run(size_t) {
   } catch (const std::exception &e) {
     std::string msg = "A dwarfexport error occurred: " + std::string(e.what());
     warning(msg.c_str());
+    return false;
   } catch (...) {
     warning("A dwarfexport error occurred");
+    return false;
   }
+  return true;
 }
 
 plugin_t PLUGIN = {

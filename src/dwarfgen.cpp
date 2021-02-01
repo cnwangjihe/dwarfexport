@@ -7,6 +7,7 @@
 #define O_BINARY 0
 #endif
 
+#include <elf.h>
 #include <gelf.h>
 #include <string>
 
@@ -118,7 +119,7 @@ std::shared_ptr<DwarfGenInfo> generate_dwarf_object(const Options &options) {
   const char *isa_name = (info->mode == Mode::BIT32) ? "x86" : "x86_64";
 
   const char *dwarf_version = "V2";
-  int endian = (inf.is_be()) ? DW_DLC_TARGET_BIGENDIAN : DW_DLC_TARGET_LITTLEENDIAN;
+  int endian = (inf_is_be()) ? DW_DLC_TARGET_BIGENDIAN : DW_DLC_TARGET_LITTLEENDIAN;
   Dwarf_Ptr errarg = 0;
 
   decltype(&attached_info_callback) callback;

@@ -1,11 +1,11 @@
 #ifndef DWARFEXPORT_HPP
 #define DWARFEXPORT_HPP
 
-#include <dwarf.h>
+#include <libdwarf/dwarf.h>
 #include <fstream>
 #include <hexrays.hpp>
 #include <iostream>
-#include <libdwarf.h>
+#include <libdwarf/libdwarf.h>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
