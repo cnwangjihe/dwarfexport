@@ -11,6 +11,7 @@
 #include <nalt.hpp>
 #include <name.hpp>
 #include <string>
+#include <string_view>
 #include <struct.hpp>
 #include <range.hpp>
 #include <segment.hpp>
@@ -24,6 +25,9 @@ hexdsp_t *hexdsp = NULL;
 // A mapping of IDA types to dwarf types
 using type_record_t = std::map<tinfo_t, Dwarf_P_Die>;
 
+// A mapping of namespaces to dwarf namespace DIEs
+using ns_record_t = std::map<std::string, Dwarf_P_Die, std::less<>>; // explicit transparent comparator so we can use std::string_view with .find()
+
 /**
  * Add a dwarf type definitions to the compilation unit 'cu' representing
  * the IDA type 'type'. This is implemented for structs, const types,
@@ -32,10 +36,79 @@ using type_record_t = std::map<tinfo_t, Dwarf_P_Die>;
  * @returns The dwarf DIE associated with the new type (or the existing one)
  */
 static Dwarf_P_Die get_or_add_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
-                                   const tinfo_t &type, type_record_t &record);
+                                   const tinfo_t &type, type_record_t &record,
+                                   ns_record_t &namespaces);
+
+/**
+ * Get the base part of a namespaced name.
+ *
+ * @returns A string view corresponding to the base part.
+ */
+static std::string_view get_ns_base(const std::string_view &name) {
+  auto index = name.rfind("::");
+  if (index == std::string::npos)
+    return {};
+  return std::string_view(name).substr(0, index);
+}
+
+/**
+ * Get the tail part of a namespaced name.
+ *
+ * @returns A string view corresponding to the tail part.
+ */
+static std::string_view get_ns_tail(const std::string_view &name) {
+  auto index = name.rfind("::");
+  if (index == std::string::npos)
+    return name;
+  return std::string_view(name).substr(index+2);
+}
+
+/**
+ * Add a dwarf namespace declaration to the compilation unit 'cu' representing
+ * the namespace 'ns'.
+ *
+ * @returns The dwarf DIE associated with the new namespace (or the existing one)
+ */
+static Dwarf_P_Die get_or_add_ns(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
+                                 const std::string_view &name, ns_record_t &namespaces) {
+  // The top-level namespace is the cu
+  if (name.empty()) {
+    return cu;
+  }
+
+  auto it = namespaces.find(name);
+  if (it != namespaces.end()) {
+    return it->second;
+  }
+
+  Dwarf_Error err = 0;
+
+  dwarfexport_log("Adding new namespace");
+
+  // Find parent namespace
+  auto parent_ns = get_or_add_ns(dbg, cu, get_ns_base(name), namespaces);
+
+  auto die = dwarf_new_die(dbg, DW_TAG_namespace, parent_ns, NULL, NULL, NULL, &err);
+  if (die == NULL) {
+    dwarfexport_error("dwarf_new_die failed: ", dwarf_errmsg(err));
+  }
+
+  // Add namespace name
+  auto name_tail = std::string(get_ns_tail(name)); // convert to owned string because we need 0-termination
+  auto c_name_tail = const_cast<char*>(name_tail.c_str());
+  if (dwarf_add_AT_name(die, c_name_tail, &err) == NULL) {
+    dwarfexport_error("dwarf_add_AT_name failed: ", dwarf_errmsg(err));
+  }
+
+  dwarfexport_log("  Name = ", name);
+
+  namespaces[std::string(name)] = die;
+  return die;
+}
 
 static Dwarf_P_Die add_struct_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
-                                   const tinfo_t &type, type_record_t &record) {
+                                   const tinfo_t &type, type_record_t &record,
+                                   ns_record_t &namespaces) {
   if (!type.is_struct()) {
     dwarfexport_error("add_struct_type: type is not struct");
   }
@@ -45,12 +118,17 @@ static Dwarf_P_Die add_struct_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
   Dwarf_P_Die die;
   Dwarf_Error err = 0;
 
-  die = dwarf_new_die(dbg, DW_TAG_structure_type, cu, NULL, NULL, NULL, &err);
+  // Find namespace
+  std::string name = type.dstr();
+  auto ns = get_or_add_ns(dbg, cu, get_ns_base(name), namespaces);
+
+  die = dwarf_new_die(dbg, DW_TAG_structure_type, ns, NULL, NULL, NULL, &err);
   record[type] = die;
 
   // Add type name
-  std::string name = type.dstr();
-  if (dwarf_add_AT_name(die, &name[0], &err) == NULL) {
+  auto name_tail = get_ns_tail(name);
+  auto c_name_tail = const_cast<char*>(name_tail.data()); // it's the tail, .data() is 0-terminated
+  if (dwarf_add_AT_name(die, c_name_tail, &err) == NULL) {
     dwarfexport_error("dwarf_add_AT_name failed: ", dwarf_errmsg(err));
   }
 
@@ -83,7 +161,7 @@ static Dwarf_P_Die add_struct_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
         dwarf_new_die(dbg, DW_TAG_member, die, NULL, NULL, NULL, &err);
 
     // Add member type
-    auto member_type_die = get_or_add_type(dbg, cu, member_type, record);
+    auto member_type_die = get_or_add_type(dbg, cu, member_type, record, namespaces);
     if (dwarf_add_AT_reference(dbg, member_die, DW_AT_type, member_type_die,
                                &err) == nullptr) {
       dwarfexport_error("dwarf_add_AT_reference failed: ", dwarf_errmsg(err));
@@ -114,7 +192,8 @@ static Dwarf_P_Die add_struct_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
 }
 
 static Dwarf_P_Die add_array_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
-                                  const tinfo_t &type, type_record_t &record) {
+                                  const tinfo_t &type, type_record_t &record,
+                                  ns_record_t &namespaces) {
   if (!type.is_array()) {
     dwarfexport_error("add_array_type: type is not array");
   }
@@ -124,12 +203,12 @@ static Dwarf_P_Die add_array_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
   Dwarf_P_Die die;
   Dwarf_Error err = 0;
 
-  die = dwarf_new_die(dbg, DW_TAG_array_type, cu, NULL, NULL, NULL, &err);
+  die = dwarf_new_die(dbg, DW_TAG_array_type, cu, NULL, NULL, NULL, &err); // QMI: should add to same ns as underlying type?
   record[type] = die;
 
   auto element_type = type;
   element_type.remove_ptr_or_array();
-  auto element_die = get_or_add_type(dbg, cu, element_type, record);
+  auto element_die = get_or_add_type(dbg, cu, element_type, record, namespaces);
 
   if (dwarf_add_AT_reference(dbg, die, DW_AT_type, element_die, &err) ==
       nullptr) {
@@ -155,7 +234,7 @@ static Dwarf_P_Die add_array_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
 
     // Try to get size_t and use it for the index type
     if (parse_decl(&size_type, &name, NULL, "size_t x;", PT_SIL)) {
-      auto index_die = get_or_add_type(dbg, cu, size_type, record);
+      auto index_die = get_or_add_type(dbg, cu, size_type, record, namespaces);
       if (dwarf_add_AT_reference(dbg, subrange, DW_AT_type, index_die,
                                  &err) == nullptr) {
         dwarfexport_error("dwarf_add_AT_reference failed: ",
@@ -167,7 +246,8 @@ static Dwarf_P_Die add_array_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
 }
 
 static Dwarf_P_Die add_const_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
-                                  const tinfo_t &type, type_record_t &record) {
+                                  const tinfo_t &type, type_record_t &record,
+                                  ns_record_t &namespaces) {
   if (!type.is_const()) {
     dwarfexport_error("add_const_type: type is not const");
   }
@@ -177,12 +257,12 @@ static Dwarf_P_Die add_const_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
   Dwarf_P_Die die;
   Dwarf_Error err = 0;
 
-  die = dwarf_new_die(dbg, DW_TAG_const_type, cu, NULL, NULL, NULL, &err);
+  die = dwarf_new_die(dbg, DW_TAG_const_type, cu, NULL, NULL, NULL, &err); // QMI: should add to same ns as underlying type?
   record[type] = die;
 
   auto without_const = type;
   without_const.clr_const();
-  auto child_die = get_or_add_type(dbg, cu, without_const, record);
+  auto child_die = get_or_add_type(dbg, cu, without_const, record, namespaces);
 
   if (dwarf_add_AT_reference(dbg, die, DW_AT_type, child_die, &err) ==
       nullptr) {
@@ -192,7 +272,8 @@ static Dwarf_P_Die add_const_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
 }
 
 static Dwarf_P_Die add_ptr_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
-                                const tinfo_t &type, type_record_t &record) {
+                                const tinfo_t &type, type_record_t &record,
+                                ns_record_t &namespaces) {
   if (!type.is_ptr()) {
     dwarfexport_error("add_ptr_type: type is not a pointer");
   }
@@ -202,12 +283,12 @@ static Dwarf_P_Die add_ptr_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
   Dwarf_P_Die die;
   Dwarf_Error err = 0;
 
-  die = dwarf_new_die(dbg, DW_TAG_pointer_type, cu, NULL, NULL, NULL, &err);
+  die = dwarf_new_die(dbg, DW_TAG_pointer_type, cu, NULL, NULL, NULL, &err); // QMI: should add to same ns as underlying type?
   record[type] = die;
 
   auto without_ptr = type;
   without_ptr.remove_ptr_or_array();
-  auto child_die = get_or_add_type(dbg, cu, without_ptr, record);
+  auto child_die = get_or_add_type(dbg, cu, without_ptr, record, namespaces);
 
   if (dwarf_add_AT_reference(dbg, die, DW_AT_type, child_die, &err) ==
       nullptr) {
@@ -222,9 +303,11 @@ static Dwarf_P_Die add_ptr_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
 }
 
 static Dwarf_P_Die get_or_add_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
-                                   const tinfo_t &type, type_record_t &record) {
-  if (record.find(type) != record.end()) {
-    return record[type];
+                                   const tinfo_t &type, type_record_t &record,
+                                   ns_record_t &namespaces) {
+  auto it = record.find(type);
+  if (it != record.end()) {
+    return it->second;
   }
 
   dwarfexport_log("Adding new type");
@@ -234,28 +317,32 @@ static Dwarf_P_Die get_or_add_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
 
   // special cases for const, ptr, array, and struct
   if (type.is_const()) {
-    die = add_const_type(dbg, cu, type, record);
+    die = add_const_type(dbg, cu, type, record, namespaces);
     return die;
   } else if (type.is_ptr()) {
-    die = add_ptr_type(dbg, cu, type, record);
+    die = add_ptr_type(dbg, cu, type, record, namespaces);
     return die;
   } else if (type.is_array()) {
-    die = add_array_type(dbg, cu, type, record);
+    die = add_array_type(dbg, cu, type, record, namespaces);
     return die;
   } else if (type.is_struct()) {
-    die = add_struct_type(dbg, cu, type, record);
+    die = add_struct_type(dbg, cu, type, record, namespaces);
     return die;
   }
 
-  die = dwarf_new_die(dbg, DW_TAG_base_type, cu, NULL, NULL, NULL, &err);
+  // Find namespace
+  std::string name = type.dstr();
+  auto ns = get_or_add_ns(dbg, cu, get_ns_base(name), namespaces);
 
+  die = dwarf_new_die(dbg, DW_TAG_base_type, ns, NULL, NULL, NULL, &err);
   if (die == NULL) {
     dwarfexport_error("dwarf_new_die failed: ", dwarf_errmsg(err));
   }
 
   // Add type name
-  std::string name = type.dstr();
-  if (dwarf_add_AT_name(die, &name[0], &err) == NULL) {
+  auto name_tail = get_ns_tail(name);
+  auto c_name_tail = const_cast<char*>(name_tail.data()); // it's the tail, .data() is 0-terminated
+  if (dwarf_add_AT_name(die, c_name_tail, &err) == NULL) {
     dwarfexport_error("dwarf_add_AT_name failed: ", dwarf_errmsg(err));
   }
 
@@ -284,7 +371,8 @@ static Dwarf_P_Die get_or_add_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
  */
 static Dwarf_P_Die add_variable(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
                                 Dwarf_P_Die func_die, cfuncptr_t cfunc,
-                                const lvar_t &var, type_record_t &record) {
+                                const lvar_t &var, type_record_t &record,
+                                ns_record_t &namespaces) {
   Dwarf_P_Die die;
   Dwarf_Error err = 0;
 
@@ -294,7 +382,7 @@ static Dwarf_P_Die add_variable(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
   // returns strange values (bug?), and I think lvars in the decompiled view
   // must be types, so skip the check.
   auto var_type = var.type();
-  auto var_type_die = get_or_add_type(dbg, cu, var_type, record);
+  auto var_type_die = get_or_add_type(dbg, cu, var_type, record, namespaces);
   if (dwarf_add_AT_reference(dbg, die, DW_AT_type, var_type_die, &err) ==
       nullptr) {
     dwarfexport_error("dwarf_add_AT_reference failed: ", dwarf_errmsg(err));
@@ -350,7 +438,8 @@ static Dwarf_P_Die add_variable(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
  */
 static void add_disassembler_func_info(std::shared_ptr<DwarfGenInfo> info,
                                        Dwarf_P_Die func_die, Dwarf_P_Die cu,
-                                       func_t *func, type_record_t &record) {
+                                       func_t *func, type_record_t &record,
+                                       ns_record_t &namespaces) {
   auto dbg = info->dbg;
   Dwarf_Error err = 0;
 
@@ -387,7 +476,7 @@ static void add_disassembler_func_info(std::shared_ptr<DwarfGenInfo> info,
     if (member_struct) {
       tinfo_t type;
       if (type.get_numbered_type(nullptr, member_struct->ordinal)) {
-        auto var_type_die = get_or_add_type(dbg, cu, type, record);
+        auto var_type_die = get_or_add_type(dbg, cu, type, record, namespaces);
         if (dwarf_add_AT_reference(dbg, die, DW_AT_type, var_type_die, &err) ==
             nullptr) {
           dwarfexport_error("dwarf_add_AT_reference failed: ",
@@ -423,7 +512,7 @@ static void add_decompiler_func_info(std::shared_ptr<DwarfGenInfo> info,
                                      func_t *func, std::ostream &file,
                                      int &linecount, Dwarf_Unsigned file_index,
                                      Dwarf_Unsigned symbol_index,
-                                     type_record_t &record) {
+                                     type_record_t &record, ns_record_t &namespaces) {
   auto dbg = info->dbg;
   auto err = info->err;
 
@@ -439,7 +528,7 @@ static void add_decompiler_func_info(std::shared_ptr<DwarfGenInfo> info,
   auto &lvars = *cfunc->get_lvars();
   for (std::size_t i = 0; i < lvars.size(); ++i) {
     if (lvars[i].name.size()) {
-      add_variable(dbg, cu, func_die, cfunc, lvars[i], record);
+      add_variable(dbg, cu, func_die, cfunc, lvars[i], record, namespaces);
     }
   }
 
@@ -536,11 +625,16 @@ static Dwarf_P_Die add_function(std::shared_ptr<DwarfGenInfo> info,
                                 Options &options, Dwarf_P_Die cu, func_t *func,
                                 std::ostream &file, int &linecount,
                                 Dwarf_Unsigned file_index,
-                                type_record_t &record) {
+                                type_record_t &record, ns_record_t &namespaces) {
   auto dbg = info->dbg;
   auto err = info->err;
+
+  // Find function namespace
+  auto name = get_long_name(func->start_ea);
+  auto ns = get_or_add_ns(dbg, cu, get_ns_base(name.c_str()), namespaces);
+
   Dwarf_P_Die die;
-  die = dwarf_new_die(dbg, DW_TAG_subprogram, cu, nullptr, nullptr, nullptr,
+  die = dwarf_new_die(dbg, DW_TAG_subprogram, ns, nullptr, nullptr, nullptr,
                       &err);
   if (die == nullptr) {
     dwarfexport_error("dwarf_new_die failed: ", dwarf_errmsg(err));
@@ -559,10 +653,9 @@ static Dwarf_P_Die add_function(std::shared_ptr<DwarfGenInfo> info,
   }
 
   // Add function name
-  auto name = get_long_name(func->start_ea);
-  char *c_name = &*name.begin();
-
-  if (dwarf_add_AT_name(die, c_name, &err) == nullptr) {
+  auto name_tail = get_ns_tail(name.c_str());
+  auto c_name_tail = const_cast<char*>(name_tail.data()); // it's the tail, .data() is 0-terminated
+  if (dwarf_add_AT_name(die, c_name_tail, &err) == nullptr) {
     dwarfexport_error("dwarf_add_AT_name failed: ", dwarf_errmsg(err));
   }
 
@@ -578,7 +671,7 @@ static Dwarf_P_Die add_function(std::shared_ptr<DwarfGenInfo> info,
   tinfo_t func_type_info;
   if (get_tinfo(&func_type_info, func->start_ea)) {
     auto rettype = func_type_info.get_rettype();
-    auto rettype_die = get_or_add_type(dbg, cu, rettype, record);
+    auto rettype_die = get_or_add_type(dbg, cu, rettype, record, namespaces);
     if (dwarf_add_AT_reference(dbg, die, DW_AT_type, rettype_die, &err) ==
         nullptr) {
       dwarfexport_error("dwarf_add_AT_reference failed: ", dwarf_errmsg(err));
@@ -603,9 +696,9 @@ static Dwarf_P_Die add_function(std::shared_ptr<DwarfGenInfo> info,
                          false, &err);
 
     add_decompiler_func_info(info, cu, die, func, file, linecount, file_index,
-                             0, record);
+                             0, record, namespaces);
   } else {
-    add_disassembler_func_info(info, cu, die, func, record);
+    add_disassembler_func_info(info, cu, die, func, record, namespaces);
   }
 
   return die;
@@ -616,7 +709,8 @@ static Dwarf_P_Die add_function(std::shared_ptr<DwarfGenInfo> info,
  * to types in the debugger that may not have actually been used at the time
  * the debug info was being exported.
  */
-void add_structures(Dwarf_P_Debug dbg, Dwarf_P_Die cu, type_record_t &record) {
+void add_structures(Dwarf_P_Debug dbg, Dwarf_P_Die cu, type_record_t &record,
+                    ns_record_t &namespaces) {
   dwarfexport_log("Adding unused types");
   for (auto idx = get_first_struc_idx(); idx != BADADDR;
        idx = get_next_struc_idx(idx)) {
@@ -625,7 +719,7 @@ void add_structures(Dwarf_P_Debug dbg, Dwarf_P_Die cu, type_record_t &record) {
     tinfo_t type;
 
     if (type.get_numbered_type(nullptr, struc->ordinal)) {
-      get_or_add_type(dbg, cu, type, record);
+      get_or_add_type(dbg, cu, type, record, namespaces);
     }
   }
 }
@@ -635,7 +729,7 @@ void add_structures(Dwarf_P_Debug dbg, Dwarf_P_Die cu, type_record_t &record) {
  * not given a textual representation, only a location and type.
  */
 void add_global_variables(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
-                          type_record_t &record) {
+                          type_record_t &record, ns_record_t &namespaces) {
   dwarfexport_log("Adding global variables");
   Dwarf_Error err = 0;
   auto seg_count = get_segm_qty();
@@ -661,16 +755,18 @@ void add_global_variables(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
       }
 
       dwarfexport_log("Adding global variable");
-      std::string lname(name.c_str());
-      dwarfexport_log("  name = ", lname);
-
+      dwarfexport_log("  name = ", name.c_str());
       dwarfexport_log("  location = ", addr);
 
-      auto die =
-          dwarf_new_die(dbg, DW_TAG_variable, cu, NULL, NULL, NULL, &err);
-      auto var_type_die = get_or_add_type(dbg, cu, type, record);
+      auto ns = get_or_add_ns(dbg, cu, get_ns_base(name.c_str()), namespaces);
 
-      if (dwarf_add_AT_name(die, const_cast<char*>(name.c_str()), &err) == NULL) {
+      auto die =
+          dwarf_new_die(dbg, DW_TAG_variable, ns, NULL, NULL, NULL, &err);
+      auto var_type_die = get_or_add_type(dbg, cu, type, record, namespaces);
+
+      auto name_tail = get_ns_tail(name.c_str());
+      auto c_name_tail = const_cast<char*>(name_tail.data()); // it's the tail, .data() is 0-terminated
+      if (dwarf_add_AT_name(die, c_name_tail, &err) == NULL) {
         dwarfexport_error("dwarf_add_AT_name failed: ", dwarf_errmsg(err));
       }
 
@@ -704,6 +800,11 @@ void add_debug_info(std::shared_ptr<DwarfGenInfo> info,
     dwarfexport_error("dwarf_new_die failed: ", dwarf_errmsg(err));
   }
 
+  // Indicate C++ so we can create namespaces for names containing ::, otherwise GDB chokes on them.
+  if (dwarf_add_AT_unsigned_const(dbg, cu, DW_AT_language, DW_LANG_C_plus_plus, &err) == nullptr) {
+    dwarfexport_error("dwarf_add_AT_unsigned_const(DW_AT_language) failed: ", dwarf_errmsg(err));
+  }
+
   Dwarf_Unsigned file_index = 0;
   if (options.use_decompiler()) {
     if (dwarf_add_AT_name(cu, &options.c_filename()[0], &err) == nullptr) {
@@ -720,6 +821,7 @@ void add_debug_info(std::shared_ptr<DwarfGenInfo> info,
 
   int linecount = 1;
   type_record_t record;
+  ns_record_t namespaces;
   auto seg_qty = get_segm_qty();
   for (std::size_t segn = 0; segn < seg_qty; ++segn) {
     auto seg = getnseg(segn);
@@ -758,7 +860,7 @@ void add_debug_info(std::shared_ptr<DwarfGenInfo> info,
       }
 
       add_function(info, options, cu, f, sourcefile, linecount, file_index,
-                   record);
+                   record, namespaces);
     }
   }
 
@@ -767,10 +869,10 @@ void add_debug_info(std::shared_ptr<DwarfGenInfo> info,
   }
 
   // Add the global variables (but don't add a file location)
-  add_global_variables(dbg, cu, record);
+  add_global_variables(dbg, cu, record, namespaces);
 
   // Add any other structures
-  add_structures(dbg, cu, record);
+  add_structures(dbg, cu, record, namespaces);
 }
 
 int idaapi init(void) {

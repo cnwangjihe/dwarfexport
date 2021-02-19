@@ -1,7 +1,7 @@
 
 
 CXX ?= g++
-CXXFLAGS=-fPIC -shared -std=c++11 -fpermissive #-Wall -Wextra -m32
+CXXFLAGS=-fPIC -shared -std=c++17 -fpermissive #-Wall -Wextra -m32
 #LDFLAGS+=-static-libgcc -static-libstdc++
 LIBS=-lida -ldwarf
 INCLUDES=-I$(IDASDK_PATH)/include -I$(IDA_PATH)/plugins/hexrays_sdk/include
