@@ -8,6 +8,7 @@
 #include <hexrays.hpp>
 #include <kernwin.hpp>
 #include <loader.hpp>
+#include <nalt.hpp>
 #include <name.hpp>
 #include <string>
 #include <struct.hpp>
@@ -390,7 +391,7 @@ static void add_disassembler_func_info(std::shared_ptr<DwarfGenInfo> info,
     auto member_struct = get_sptr(&frame->members[i]);
     if (member_struct) {
       tinfo_t type;
-      if (guess_tinfo(&type, member_struct->id) == GUESS_FUNC_OK) {
+      if (type.get_numbered_type(nullptr, member_struct->ordinal)) {
         auto var_type_die = get_or_add_type(dbg, cu, type, record);
         if (dwarf_add_AT_reference(dbg, die, DW_AT_type, var_type_die, &err) ==
             nullptr) {
@@ -625,9 +626,10 @@ void add_structures(Dwarf_P_Debug dbg, Dwarf_P_Die cu, type_record_t &record) {
   for (auto idx = get_first_struc_idx(); idx != BADADDR;
        idx = get_next_struc_idx(idx)) {
     auto tid = get_struc_by_idx(idx);
+    auto struc = get_struc(tid);
     tinfo_t type;
 
-    if (guess_tinfo(&type, tid) == GUESS_FUNC_OK) {
+    if (type.get_numbered_type(nullptr, struc->ordinal)) {
       get_or_add_type(dbg, cu, type, record);
     }
   }
@@ -650,14 +652,17 @@ void add_global_variables(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
     }
 
     for (auto addr = seg->start_ea; addr < seg->end_ea; ++addr) {
-        qstring name;
-        if (!get_name(&name, addr)) {
+      qstring name;
+      if (!get_name(&name, addr) || name.empty()) {
         continue;
       }
 
+      // When no type information has been set, we may still try to guess the type.
       tinfo_t type;
-      if (guess_tinfo(&type, addr) != GUESS_FUNC_OK) {
-        continue;
+      if (!get_tinfo(&type, addr)) {
+        if (guess_tinfo(&type, addr) != GUESS_FUNC_OK) {
+          continue;
+        }
       }
 
       dwarfexport_log("Adding global variable");
