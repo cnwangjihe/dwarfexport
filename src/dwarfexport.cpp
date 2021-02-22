@@ -148,23 +148,18 @@ static Dwarf_P_Die add_array_type(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
                                     &err) == NULL) {
       dwarfexport_error("dwarf_add_AT_unsigned_const failed: ",
                         dwarf_errmsg(err));
+    }
 
-      tinfo_t size_type;
-      qstring name;
+    tinfo_t size_type;
+    qstring name;
 
-      // Try to get size_t and use it for the index type
-      if (parse_decl(&size_type, &name, NULL, "size_t x;", PT_SIL)) {
-        auto index_die = get_or_add_type(dbg, cu, size_type, record);
-        if (dwarf_add_AT_reference(dbg, subrange, DW_AT_type, index_die,
-                                   &err) == nullptr) {
-          dwarfexport_error("dwarf_add_AT_reference failed: ",
-                            dwarf_errmsg(err));
-        }
-        if (dwarf_add_AT_reference(dbg, die, DW_AT_sibling, index_die, &err) ==
-            nullptr) {
-          dwarfexport_error("dwarf_add_AT_reference failed: ",
-                            dwarf_errmsg(err));
-        }
+    // Try to get size_t and use it for the index type
+    if (parse_decl(&size_type, &name, NULL, "size_t x;", PT_SIL)) {
+      auto index_die = get_or_add_type(dbg, cu, size_type, record);
+      if (dwarf_add_AT_reference(dbg, subrange, DW_AT_type, index_die,
+                                 &err) == nullptr) {
+        dwarfexport_error("dwarf_add_AT_reference failed: ",
+                          dwarf_errmsg(err));
       }
     }
   }
@@ -765,10 +760,10 @@ void add_debug_info(std::shared_ptr<DwarfGenInfo> info,
       add_function(info, options, cu, f, sourcefile, linecount, file_index,
                    record);
     }
+  }
 
-    if (dwarf_add_die_to_debug(dbg, cu, &err) != DW_DLV_OK) {
-      dwarfexport_error("dwarf_add_die_to_debug failed: ", dwarf_errmsg(err));
-    }
+  if (dwarf_add_die_to_debug(dbg, cu, &err) != DW_DLV_OK) {
+    dwarfexport_error("dwarf_add_die_to_debug failed: ", dwarf_errmsg(err));
   }
 
   // Add the global variables (but don't add a file location)
