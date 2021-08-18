@@ -7,7 +7,7 @@
 #define O_BINARY 0
 #endif
 
-#include <elf.h>
+// #include <elf.h>
 #include <gelf.h>
 #include <string>
 

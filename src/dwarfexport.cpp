@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <frame.hpp>
 #include <fstream>
+#include <string>
 #include <ida.hpp>
 #include <idp.hpp>
 #include <hexrays.hpp>
@@ -448,6 +449,19 @@ static void add_decompiler_func_info(std::shared_ptr<DwarfGenInfo> info,
   const auto &bounds = cfunc->get_boundaries();
   const auto &eamap = cfunc->get_eamap();
   ea_t previous_line_addr = 0;
+  // int gg = 0;
+  // for (auto it = bounds.begin(); it != bounds.end(); ++it)
+  // {
+  //   std::ostringstream tbuf("",std::ios_base::ate);
+  //   tbuf << std::hex << it->first->ea << std::endl;
+  //   dwarfexport_log(tbuf.str().c_str());
+  //   gg++;
+  //   if (gg>10000)
+  //   {
+  //     msg("Oooooooooooooooooooooooops!");
+  //     break;
+  //   }
+  // }
   for (std::size_t i = 0; i < sv.size(); ++i, ++linecount) {
     qstring buf;
     qstring line = sv[i].line;
@@ -463,7 +477,6 @@ static void add_decompiler_func_info(std::shared_ptr<DwarfGenInfo> info,
     if (index == std::string::npos) {
       continue;
     }
-
     // For each column in the line, try to find a cexpr_t that has an
     // address inside the function, then emit a dwarf source line info
     // for that.
@@ -491,7 +504,11 @@ static void add_decompiler_func_info(std::shared_ptr<DwarfGenInfo> info,
       // to a multi-line function call were not correctly handled.
       ea_t expr_lowest_addr = addr, expr_highest_addr = addr;
       if (eamap.count(addr)) {
-        const auto &expr_areaset = bounds.at(eamap.at(addr).at(0));
+        // std::ostringstream tbuf("",std::ios_base::ate);
+        // tbuf << "0x" << std::hex << eamap.at(addr).at(0)->ea << '\n';
+        // msg(tbuf.str().c_str());
+        const cinsn_t * bound_key = eamap.at(addr).at(0);
+        const auto &expr_areaset = boundaries_second(boundaries_find(&bounds,bound_key));
 
         // TODO: the area set may not be sorted this way
         expr_lowest_addr = expr_areaset.getrange(0).start_ea;
@@ -773,7 +790,7 @@ void add_debug_info(std::shared_ptr<DwarfGenInfo> info,
   add_structures(dbg, cu, record);
 }
 
-int idaapi init(void) {
+plugmod_t * idaapi init(void) {
   if (init_hexrays_plugin()) {
     msg("dwarfexport: Using decompiler\n");
     has_decompiler = true;
@@ -787,12 +804,12 @@ bool idaapi run(size_t) {
   try {
     auto default_options =
         (has_decompiler) ? Options::ATTACH_DEBUG_INFO | Options::USE_DECOMPILER
+                         | Options::ONLY_DECOMPILE_NAMED_FUNCS
                          : Options::ATTACH_DEBUG_INFO;
     Options options(".", default_options);
 
     get_input_file_path(options.filepath, QMAXPATH);
     get_root_filename(options.filename, QMAXPATH);
-
     char *filepath_end = strrchr(options.filepath, PATH_SEP);
     if (filepath_end != nullptr) {
       *(filepath_end + 1) = '\0';
@@ -849,6 +866,7 @@ bool idaapi run(size_t) {
     warning("A dwarfexport error occurred");
     return false;
   }
+  msg("dwarf export ok.");
   return true;
 }
 

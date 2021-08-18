@@ -7,14 +7,17 @@ information. This can then be imported in to gdb and other tools, allowing
 you to debug using info you have recovered in IDA even when you cannot connect
 the IDA debugger.
 
+**This fork ports it to IDA 7.5.**
+
 Usage
 -----
 
-Pre-compiled copies of `dwarfexport` are available in the `bin` folder of this
-project. Just add these files to your IDA `plugins` folder (plx and plx64 for linux,
-plw and p64 for windows) and you will have a new option
-"Edit->Plugins->Export Dwarf Debug Info". Click this and select a folder for the
-output.
+Pre-compiled copies of `dwarfexport` are available in the `prebuild` folder of this
+project (Windows only). Just add these files to your IDA `plugins` folder and you 
+
+will have a new option "Edit->Plugins->Export Dwarf Debug Info". Click this and 
+
+select a folder for the output.
 
 The plugin will generate two files in the output directory. One will be a `.c` file
 with the decompiled functions from the Hexrays decompiler. The other is a `.dbg`
@@ -53,30 +56,35 @@ folder location respectively. Then build the plugin using `make`.
 Building On Windows
 -------------------
 
-Windows build can be performed using MSVC Compiler (cl.exe) and NMAKE
-(nmake.exe). First, download and extract [libdwarf](
-https://sourceforge.net/p/libdwarf/code/ci/master/tree/) source code into
-`deps/libdwarf` and [libelf](
-https://fossies.org/linux/misc/old/libelf-0.8.13.tar.gz/) source code into
-`deps/libelf-0.8.13`. The commands below assume WSL/MinGW/Cygwin, but you can
-use any other method that you prefer.
+Windows build can be performed using MSVC Compiler and NMAKE.
+
+First, you need to download and extract [libdwarf](
+https://sourceforge.net/p/libdwarf/code/ci/master/tree/) and [libelf](
+https://fossies.org/linux/misc/old/libelf-0.8.13.tar.gz/).
+
+On Windows 10 (or install curl and tar in system path), you can execute
+
+`prepare-deps.bat` to download and put them into `deps`.
+
+Or using WSL/MinGW/Cygwin:
 
 ```
 $ git clone git://git.code.sf.net/p/libdwarf/code deps/libdwarf
-$ (cd deps/libdwarf && git checkout 988618dc8be8)
+$ (cd deps/libdwarf && git checkout 988618dc8be8 && cd ..)
 $ curl https://fossies.org/linux/misc/old/libelf-0.8.13.tar.gz | tar -C deps -xz
 ```
 
-Because IDA is now 100% x64 binaries as of IDA 7, you must invoke NMAKE through the x64 Native Tools Command Prompt for
-VS as follows for "32-bit" IDA:
+Because IDA is now 100% x64 binaries as of IDA 7, you must invoke NMAKE 
+
+through the x64 Native Tools Command Prompt for VS as follows for x86 IDA:
 
 ```
-dwarfexport> nmake /f Makefile.MSVC IDA_PATH="C:\Program Files\IDA 7.2" IDASDK_PATH="C:\Program Files\IDA 7.2\sdk PLATFORM="x86"
+dwarfexport> nmake /f Makefile.MSVC IDA_PATH="C:\Program Files\IDA 7.5" IDASDK_PATH="C:\Program Files\IDA 7.5\SDK75\idasdk75" PLATFORM="x86"
 ```
 
-and for 64-bit:
+and for x86_64:
 ```
-dwarfexport> nmake /f Makefile.MSVC IDA_PATH="C:\Program Files\IDA 7.2" IDASDK_PATH="C:\Program Files\IDA 7.2\sdk PLATFORM="x86"
+dwarfexport> nmake /f Makefile.MSVC IDA_PATH="C:\Program Files\IDA 7.5" IDASDK_PATH="C:\Program Files\IDA 7.5\SDK75\idasdk75" PLATFORM="x64"
 ```
 
 32-bit version will be placed into `bin\dwarfexport.dll`, 64-bit version will

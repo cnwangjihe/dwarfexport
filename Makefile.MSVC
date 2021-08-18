@@ -7,7 +7,7 @@ CXXFLAGS=$(COMMONCXXFLAGS) \
          /I"$(IDASDK_PATH)"\include \
          /I"$(IDA_PATH)"\plugins\hexrays_sdk\include \
          /Ideps\libdwarf-helpers \
-         /Ideps\libdwarf\libdwarf \
+         /Ideps\libdwarf \
          /Ideps\libelf-helpers \
          /Ideps\libelf-0.8.13\lib
 

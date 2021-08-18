@@ -10,6 +10,10 @@
 #include <sstream>
 #include <stdexcept>
 
+#ifndef ELF_F_PERMISSIVE
+  #define ELF_F_PERMISSIVE 0x8
+#endif
+
 [[noreturn]] inline void dwarfexport_error_impl(const std::string &s) {
   throw std::runtime_error(s);
 }
