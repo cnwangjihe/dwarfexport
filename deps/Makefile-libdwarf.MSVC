@@ -83,4 +83,4 @@ lib\libdwarf$(LIBSUFFIX): $(OBJECTS)
     $(CC) /c $(CFLAGS) /Fo:$@ $<
 
 clean:
-    $(RM) $(OBJECTS) lib\libdwarf$(LIBSUFFIX)
+    $(RM) $(OBJECTS) lib\libdwarf$(LIBSUFFIX) | call rem

@@ -3,7 +3,6 @@
 #include <cstdlib>
 #include <frame.hpp>
 #include <fstream>
-#include <string>
 #include <ida.hpp>
 #include <idp.hpp>
 #include <hexrays.hpp>
@@ -449,19 +448,6 @@ static void add_decompiler_func_info(std::shared_ptr<DwarfGenInfo> info,
   const auto &bounds = cfunc->get_boundaries();
   const auto &eamap = cfunc->get_eamap();
   ea_t previous_line_addr = 0;
-  // int gg = 0;
-  // for (auto it = bounds.begin(); it != bounds.end(); ++it)
-  // {
-  //   std::ostringstream tbuf("",std::ios_base::ate);
-  //   tbuf << std::hex << it->first->ea << std::endl;
-  //   dwarfexport_log(tbuf.str().c_str());
-  //   gg++;
-  //   if (gg>10000)
-  //   {
-  //     msg("Oooooooooooooooooooooooops!");
-  //     break;
-  //   }
-  // }
   for (std::size_t i = 0; i < sv.size(); ++i, ++linecount) {
     qstring buf;
     qstring line = sv[i].line;
@@ -477,6 +463,7 @@ static void add_decompiler_func_info(std::shared_ptr<DwarfGenInfo> info,
     if (index == std::string::npos) {
       continue;
     }
+
     // For each column in the line, try to find a cexpr_t that has an
     // address inside the function, then emit a dwarf source line info
     // for that.
@@ -504,9 +491,6 @@ static void add_decompiler_func_info(std::shared_ptr<DwarfGenInfo> info,
       // to a multi-line function call were not correctly handled.
       ea_t expr_lowest_addr = addr, expr_highest_addr = addr;
       if (eamap.count(addr)) {
-        // std::ostringstream tbuf("",std::ios_base::ate);
-        // tbuf << "0x" << std::hex << eamap.at(addr).at(0)->ea << '\n';
-        // msg(tbuf.str().c_str());
         const cinsn_t * bound_key = eamap.at(addr).at(0);
         const auto &expr_areaset = boundaries_second(boundaries_find(&bounds,bound_key));
 

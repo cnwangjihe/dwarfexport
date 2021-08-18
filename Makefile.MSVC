@@ -20,6 +20,7 @@ all: bin\dwarfexport$(DLLSUFFIX)
 bin\dwarfexport$(DLLSUFFIX): $(OBJECTS) \
                              deps\lib\libdwarf$(LIBSUFFIX) \
                              deps\lib\libelf$(LIBSUFFIX)
+    if not exist bin $(MKDIR) bin
     $(LD) /DLL $(LDFLAGS) /OUT:$@ $(OBJECTS) \
                                   deps\lib\libdwarf$(LIBSUFFIX) \
                                   deps\lib\libelf$(LIBSUFFIX) \
@@ -39,8 +40,8 @@ deps\lib\libelf$(LIBSUFFIX): deps\Makefile-libelf.MSVC
     $(CXX) /c $(CXXFLAGS) /Fo:$@ $<
 
 clean:
-    $(RM) $(OBJECTS) bin\dwarfexport$(DLLSUFFIX)
+    $(RM) /f $(OBJECTS) | call rem
     cd deps
-    $(MAKE) /f Makefile-libdwarf.MSVC clean
-    $(MAKE) /f Makefile-libelf.MSVC clean
+    $(MAKE) /f Makefile-libdwarf.MSVC clean | call rem
+    $(MAKE) /f Makefile-libelf.MSVC clean | call rem
     cd ..

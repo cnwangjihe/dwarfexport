@@ -66,4 +66,4 @@ lib\libelf$(LIBSUFFIX): $(OBJECTS)
     $(CC) /c $(CFLAGS) /Fo:$@ $<
 
 clean:
-    $(RM) $(OBJECTS) lib\libelf$(LIBSUFFIX)
+    $(RM) $(OBJECTS) lib\libelf$(LIBSUFFIX) | call rem
