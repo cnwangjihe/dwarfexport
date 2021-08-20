@@ -19,7 +19,8 @@
 
 static bool has_decompiler = false;
 std::ofstream logger;
-hexdsp_t *hexdsp = NULL;
+// remove for ida76
+// hexdsp_t *hexdsp = NULL;
 
 // A mapping of IDA types to dwarf types
 using type_record_t = std::map<tinfo_t, Dwarf_P_Die>;
