@@ -12,11 +12,9 @@ the IDA debugger.
 Usage
 -----
 
-Pre-compiled copies of `dwarfexport` are available in the `prebuild` folder of this
-project (Windows only). Just add these files to your IDA `plugins` folder and you 
-
-will have a new option "Edit->Plugins->Export Dwarf Debug Info". Click this and 
-
+Pre-compiled copies of `dwarfexport` are available in Release of this project
+(Windows only). Just add these files to your IDA `plugins` folder and you
+will have a new option "Edit->Plugins->Export Dwarf Debug Info". Click this and
 select a folder for the output.
 
 The plugin will generate two files in the output directory. One will be a `.c` file
@@ -61,9 +59,7 @@ Windows build can be performed using MSVC Compiler and NMAKE.
 First, you need to download and extract [libdwarf](
 https://sourceforge.net/p/libdwarf/code/ci/master/tree/) and [libelf](
 https://fossies.org/linux/misc/old/libelf-0.8.13.tar.gz/).
-
 On Windows 10 (or install curl and tar in system path), you can execute
-
 `prepare-deps.bat` to download and put them into `deps`.
 
 Or using WSL/MinGW/Cygwin:
@@ -75,7 +71,6 @@ $ curl https://fossies.org/linux/misc/old/libelf-0.8.13.tar.gz | tar -C deps -xz
 ```
 
 Because IDA is now 100% x64 binaries as of IDA 7, you must invoke NMAKE 
-
 through the x64 Native Tools Command Prompt for VS as follows for x86 IDA:
 
 ```
