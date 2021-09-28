@@ -14,6 +14,7 @@
 #include <struct.hpp>
 #include <range.hpp>
 #include <segment.hpp>
+#include <unordered_map>
 
 #include "dwarfexport.h"
 
@@ -428,11 +429,12 @@ static void add_decompiler_func_info(std::shared_ptr<DwarfGenInfo> info,
   auto dbg = info->dbg;
   auto err = info->err;
 
+  std::unordered_map<ea_t, bool> used_addr;
   hexrays_failure_t hf;
   cfuncptr_t cfunc = decompile(func, &hf);
 
   if (cfunc == nullptr) {
-    dwarfexport_log("Failed to decompile function at ", func->start_ea);
+    dwarfexport_log("Failed to decompile function at ", tohex(func->start_ea));
     return;
   }
 
@@ -448,7 +450,6 @@ static void add_decompiler_func_info(std::shared_ptr<DwarfGenInfo> info,
   const auto &sv = cfunc->get_pseudocode();
   const auto &bounds = cfunc->get_boundaries();
   const auto &eamap = cfunc->get_eamap();
-  ea_t previous_line_addr = 0;
   for (std::size_t i = 0; i < sv.size(); ++i, ++linecount) {
     qstring buf;
     qstring line = sv[i].line;
@@ -498,6 +499,7 @@ static void add_decompiler_func_info(std::shared_ptr<DwarfGenInfo> info,
         // TODO: the area set may not be sorted this way
         expr_lowest_addr = expr_areaset.getrange(0).start_ea;
         expr_highest_addr = expr_areaset.lastrange().end_ea - 1;
+        dwarfexport_log("", tohex(addr), ": ", expr_lowest_addr, expr_highest_addr);
       }
 
       // In some situations, there are multiple lines that have the same
@@ -505,27 +507,29 @@ static void add_decompiler_func_info(std::shared_ptr<DwarfGenInfo> info,
       // try to ensure that the address associated with a given line is the
       // lowest one that is still higher than the highest address of the
       // previous line.
+      // the old method will lost some information, especially when facing for and if
+      // switch to hash table instead
       if (!lowest_line_addr || expr_lowest_addr < lowest_line_addr) {
-        if (!previous_line_addr || expr_lowest_addr > previous_line_addr) {
           lowest_line_addr = expr_lowest_addr;
-        }
       }
       if (!highest_line_addr || expr_highest_addr > highest_line_addr) {
         highest_line_addr = expr_highest_addr;
       }
     }
 
-    if (!lowest_line_addr && highest_line_addr &&
-        highest_line_addr > previous_line_addr) {
-      lowest_line_addr = previous_line_addr + 1;
-    }
     if (lowest_line_addr) {
-      dwarfexport_log("Mapping line #", linecount, " to address ",
-                      lowest_line_addr);
-      dwarf_lne_set_address(dbg, lowest_line_addr, 0, &err);
-      dwarf_add_line_entry(dbg, file_index, lowest_line_addr, linecount, index,
-                           true, false, &err);
-      previous_line_addr = highest_line_addr;
+      if (used_addr.find(lowest_line_addr) == used_addr.end()) {
+        dwarfexport_log("Mapping line #", linecount, " to address ",
+                        tohex(lowest_line_addr));
+        dwarf_lne_set_address(dbg, lowest_line_addr, 0, &err);
+        dwarf_add_line_entry(dbg, file_index, lowest_line_addr, linecount, index,
+                             true, false, &err);
+        used_addr.insert(std::make_pair(lowest_line_addr, true));
+      }
+      else {
+        dwarfexport_log("Skipping line #", linecount, ", address ",
+                        tohex(lowest_line_addr), " already in use");
+      }
     }
   }
 
@@ -666,7 +670,7 @@ void add_global_variables(Dwarf_P_Debug dbg, Dwarf_P_Die cu,
       std::string lname(name.c_str());
       dwarfexport_log("  name = ", lname);
 
-      dwarfexport_log("  location = ", addr);
+      dwarfexport_log("  location = ", tohex(addr));
 
       auto die =
           dwarf_new_die(dbg, DW_TAG_variable, cu, NULL, NULL, NULL, &err);
@@ -851,7 +855,7 @@ bool idaapi run(size_t) {
     warning("A dwarfexport error occurred");
     return false;
   }
-  msg("dwarf export ok.");
+  msg("dwarf export ok.\n");
   return true;
 }
 

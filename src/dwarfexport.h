@@ -14,6 +14,13 @@
   #define ELF_F_PERMISSIVE 0x8
 #endif
 
+template <typename Arg>
+inline std::string tohex(Arg v) {
+  std::ostringstream os;
+  os << "0x" << std::hex << v;
+  return os.str();
+}
+
 [[noreturn]] inline void dwarfexport_error_impl(const std::string &s) {
   throw std::runtime_error(s);
 }

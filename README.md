@@ -7,7 +7,7 @@ information. This can then be imported in to gdb and other tools, allowing
 you to debug using info you have recovered in IDA even when you cannot connect
 the IDA debugger.
 
-**This fork ports it to IDA 7.5.**
+**This fork ports it to IDA 7.6.**
 
 Usage
 -----
@@ -74,12 +74,12 @@ Because IDA is now 100% x64 binaries as of IDA 7, you must invoke NMAKE
 through the x64 Native Tools Command Prompt for VS as follows for x86 IDA:
 
 ```
-dwarfexport> nmake /f Makefile.MSVC IDA_PATH="C:\Program Files\IDA 7.5" IDASDK_PATH="C:\Program Files\IDA 7.5\SDK75\idasdk75" PLATFORM="x86"
+dwarfexport> nmake /f Makefile.MSVC IDA_PATH="C:\Program Files\IDA 7.6" IDASDK_PATH="C:\Program Files\IDA 7.6\idasdk76" PLATFORM="x86"
 ```
 
 and for x86_64:
 ```
-dwarfexport> nmake /f Makefile.MSVC IDA_PATH="C:\Program Files\IDA 7.5" IDASDK_PATH="C:\Program Files\IDA 7.5\SDK75\idasdk75" PLATFORM="x64"
+dwarfexport> nmake /f Makefile.MSVC IDA_PATH="C:\Program Files\IDA 7.6" IDASDK_PATH="C:\Program Files\IDA 7.6\idasdk76" PLATFORM="x64"
 ```
 
 32-bit version will be placed into `bin\dwarfexport.dll`, 64-bit version will
